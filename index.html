@@ -71,10 +71,22 @@
         </div>
         <canvas id="snapshot" style="display:none;"></canvas>
 
+        <!-- Captured frame preview (shown after Capture is pressed) -->
+        <div id="capturedPreview" style="display:none;">
+          <p class="capture-label">📸 Captured frame — analysing…</p>
+          <img id="capturedImg" alt="Captured frame" class="captured-img" />
+          <button class="btn btn-outline full-width" style="margin-top:0.5rem"
+                  onclick="clearCapture()">✕ Dismiss &amp; resume live</button>
+        </div>
+
         <div class="btn-row">
           <button id="startBtn" class="btn btn-green" onclick="startCamera()"
                   aria-label="Start webcam">
             ▶ Start Camera
+          </button>
+          <button id="captureBtn" class="btn btn-capture" onclick="captureFrame()"
+                  disabled aria-label="Capture and analyse frame">
+            📸 Capture
           </button>
           <button id="stopBtn" class="btn btn-red" onclick="stopCamera()"
                   disabled aria-label="Stop webcam">

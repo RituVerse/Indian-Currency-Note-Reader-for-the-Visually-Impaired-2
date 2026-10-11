@@ -61,7 +61,10 @@ const historyCard    = document.getElementById("historyCard");
 const historyList    = document.getElementById("historyList");
 const startBtn       = document.getElementById("startBtn");
 const stopBtn        = document.getElementById("stopBtn");
+const captureBtn     = document.getElementById("captureBtn");
 const flipBtn        = document.getElementById("flipBtn");
+const capturedPreview = document.getElementById("capturedPreview");
+const capturedImg    = document.getElementById("capturedImg");
 const dropZone       = document.getElementById("dropZone");
 const dropContent    = document.getElementById("dropContent");
 const uploadedImg    = document.getElementById("uploadedImg");
@@ -115,9 +118,10 @@ async function startCamera() {
 
     videoPlaceholder.style.display = "none";
     scanOverlay.style.display      = "";
-    startBtn.disabled = true;
-    stopBtn.disabled  = false;
-    flipBtn.disabled  = false;
+    startBtn.disabled   = true;
+    stopBtn.disabled    = false;
+    captureBtn.disabled = false;
+    flipBtn.disabled    = false;
 
     predTimer = setInterval(predictFromWebcam, PREDICT_MS);
     setResult("waiting", "📷", "LIVE", "Scanning for a banknote…");
@@ -131,11 +135,13 @@ function stopCamera() {
   clearInterval(predTimer); predTimer = null;
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
   webcamEl.srcObject = null;
-  videoPlaceholder.style.display = "";
-  scanOverlay.style.display      = "none";
-  startBtn.disabled = false;
-  stopBtn.disabled  = true;
-  flipBtn.disabled  = true;
+  videoPlaceholder.style.display  = "";
+  capturedPreview.style.display   = "none";
+  scanOverlay.style.display       = "none";
+  startBtn.disabled   = false;
+  stopBtn.disabled    = true;
+  captureBtn.disabled = true;
+  flipBtn.disabled    = true;
   resetState();
 }
 
@@ -143,6 +149,50 @@ async function flipCamera() {
   facingMode = (facingMode === "environment") ? "user" : "environment";
   stopCamera();
   await startCamera();
+}
+
+// ── 5b. Capture a single frame and analyse it ─────────────────────────────────
+async function captureFrame() {
+  if (!webcamEl.videoWidth) return;
+
+  // Pause the live prediction loop
+  clearInterval(predTimer); predTimer = null;
+  captureBtn.disabled = true;
+
+  // Draw current webcam frame to canvas
+  const ctx = snapshotCanvas.getContext("2d");
+  snapshotCanvas.width  = webcamEl.videoWidth;
+  snapshotCanvas.height = webcamEl.videoHeight;
+  ctx.drawImage(webcamEl, 0, 0);
+
+  // Show the captured still image to the user
+  capturedImg.src = snapshotCanvas.toDataURL("image/jpeg", 0.92);
+  capturedPreview.style.display = "";
+  webcamEl.style.opacity = "0.35";   // dim the live feed to show capture happened
+  scanOverlay.style.display = "none";
+
+  setResult("waiting", "🔍", "ANALYSING", "Checking captured image…");
+  confCard.style.display = "none";
+
+  // Run inference on the frozen canvas
+  const { topClass, topConf, probs } = await runModel(snapshotCanvas);
+  updateDisplay(topClass, topConf, probs, true);
+
+  // Re-enable capture button after result shown
+  captureBtn.disabled = false;
+}
+
+// Dismiss captured preview and resume live scanning
+function clearCapture() {
+  capturedPreview.style.display = "none";
+  webcamEl.style.opacity = "1";
+  scanOverlay.style.display = "";
+  capturedImg.src = "";
+  stableCount = 0; lastClass = null; displayedClass = null;
+  setResult("waiting", "📷", "LIVE", "Scanning for a banknote…");
+  confCard.style.display = "none";
+  // Restart prediction loop
+  predTimer = setInterval(predictFromWebcam, PREDICT_MS);
 }
 
 // ── 5. Webcam predict loop ────────────────────────────────────────────────────
