@@ -1,0 +1,52 @@
+# ── Dataset folders (large / not ours to redistribute) ──────────────────────
+archive/
+dataset_split/
+my_photos/
+phone_photos/
+*.zip
+*.tar.gz
+
+# ── Python virtual-environment ───────────────────────────────────────────────
+venv/
+.venv/
+env/
+
+# ── Python cache ─────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# ── Keras / TensorFlow checkpoints (large binary files) ──────────────────────
+checkpoints/
+*.h5
+*.keras
+*.pb
+saved_model/
+
+# ── Jupyter / IPython ─────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── OS junk ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE / editor ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+
+# ── Logs & temp ──────────────────────────────────────────────────────────────
+logs/
+*.log
+tmp/
+
+# ── KEEP these (committed to git) ────────────────────────────────────────────
+# model/          ← TF.js exported files
+# results/        ← confusion matrix + training curves
+# *.py            ← source code
+# *.html / *.css / *.js ← web app
+# README.md

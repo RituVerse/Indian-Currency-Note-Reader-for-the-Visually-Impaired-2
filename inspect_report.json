@@ -1,0 +1,75 @@
+{
+  "total_images": 195,
+  "counts_by_class": {
+    "100": 28,
+    "200": 28,
+    "2000": 27,
+    "500": 28,
+    "50": 28,
+    "10": 28,
+    "20": 28
+  },
+  "duplicate_groups": [
+    [
+      "archive\\Train\\1Hundrednote\\10.jpg",
+      "archive\\Train\\1Hundrednote\\6.jpg"
+    ],
+    [
+      "archive\\Train\\1Hundrednote\\13.jpg",
+      "archive\\Train\\1Hundrednote\\18.jpg"
+    ],
+    [
+      "archive\\Train\\1Hundrednote\\20.jpg",
+      "archive\\Test\\1Hundrednote\\2.jpg"
+    ],
+    [
+      "archive\\Train\\2Hundrednote\\10.jpg",
+      "archive\\Test\\2Hundrednote\\33.jpg"
+    ],
+    [
+      "archive\\Train\\2Hundrednote\\12.jpg",
+      "archive\\Train\\2Hundrednote\\5.jpg"
+    ],
+    [
+      "archive\\Train\\2Hundrednote\\18.jpg",
+      "archive\\Train\\2Hundrednote\\27.jpg"
+    ],
+    [
+      "archive\\Train\\2Hundrednote\\20.jpg",
+      "archive\\Train\\2Hundrednote\\8.jpg"
+    ],
+    [
+      "archive\\Train\\2Hundrednote\\21.jpg",
+      "archive\\Train\\2Hundrednote\\6.jpg"
+    ],
+    [
+      "archive\\Train\\5Hundrednote\\23.jpg",
+      "archive\\Train\\5Hundrednote\\4.jpg"
+    ],
+    [
+      "archive\\Train\\Fiftynote\\15.jpg",
+      "archive\\Train\\Fiftynote\\7.jpg"
+    ],
+    [
+      "archive\\Train\\Tennote\\16.jpg",
+      "archive\\Train\\Tennote\\4.jpg"
+    ],
+    [
+      "archive\\Train\\Tennote\\17.jpg",
+      "archive\\Train\\Tennote\\5.jpg"
+    ],
+    [
+      "archive\\Train\\Tennote\\7.jpg",
+      "archive\\Test\\Tennote\\1.jpg"
+    ],
+    [
+      "archive\\Test\\2Hundrednote\\2.jpg",
+      "archive\\Test\\2Hundrednote\\32.jpg"
+    ],
+    [
+      "archive\\Test\\Tennote\\2.jpg",
+      "archive\\Test\\Tennote\\32.jpg"
+    ]
+  ],
+  "corrupt_files": []
+}

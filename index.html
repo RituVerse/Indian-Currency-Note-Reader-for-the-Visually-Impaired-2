@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <!--
+    viewport meta tag: makes the page look good on phones too.
+    width=device-width  → use the phone's actual screen width
+    initial-scale=1     → don't zoom in or out automatically
+  -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Indian Currency Note Identifier</title>
+
+  <!--
+    TensorFlow.js: the machine-learning library that runs entirely in the
+    browser. No Python server needed — the model runs on the user's own device.
+    We load it from a CDN (Content Delivery Network) so the file is always fresh.
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <header>
+    <h1>💵 Indian Currency Identifier</h1>
+    <p class="subtitle">Point your camera at a banknote to identify it instantly</p>
+  </header>
+
+  <!-- ── Main layout ───────────────────────────────────────────────────── -->
+  <main>
+
+    <!-- Left / top: camera feed + upload controls -->
+    <section class="camera-section" aria-label="Camera input">
+
+      <!-- The live video feed from the webcam -->
+      <div class="video-wrapper">
+        <video id="webcam" autoplay playsinline muted aria-label="Live camera feed"></video>
+        <!--
+          The canvas is hidden — we use it internally to grab a frame from the
+          video and send it to the neural network. The user never sees it directly.
+        -->
+        <canvas id="snapshot" style="display:none;"></canvas>
+      </div>
+
+      <!-- Buttons row -->
+      <div class="controls" role="group" aria-label="Camera and upload controls">
+        <button id="startBtn" class="btn btn-primary" aria-label="Start webcam">
+          📷 Start Camera
+        </button>
+        <button id="stopBtn"  class="btn btn-secondary" aria-label="Stop webcam" disabled>
+          ⏹ Stop Camera
+        </button>
+      </div>
+
+      <!-- File upload alternative -->
+      <div class="upload-zone" role="button" tabindex="0"
+           aria-label="Upload a photo of a banknote">
+        <input type="file" id="fileInput" accept="image/*" aria-label="Choose image file" />
+        <label for="fileInput" class="upload-label">
+          📁 Upload a photo instead
+          <span class="upload-hint">(JPG, PNG, or any image)</span>
+        </label>
+      </div>
+
+      <!-- Preview of uploaded image (hidden until a file is chosen) -->
+      <div id="uploadPreview" style="display:none;">
+        <img id="uploadedImg" alt="Uploaded banknote" />
+      </div>
+    </section>
+
+    <!-- Right / bottom: result panel -->
+    <section class="result-section" aria-live="polite" aria-label="Identification result">
+
+      <!-- Large result text — the most important element on the page -->
+      <div id="resultBox" class="result-box result-waiting">
+        <p id="resultText" class="result-text">
+          Waiting for camera or photo…
+        </p>
+      </div>
+
+      <!-- Confidence bar (shown only when a prediction is ready) -->
+      <div id="confidenceWrapper" class="confidence-wrapper" style="display:none;"
+           aria-label="Confidence level">
+        <div class="confidence-label-row">
+          <span>Confidence:</span>
+          <span id="confidencePct" class="confidence-pct">—</span>
+        </div>
+        <div class="bar-bg" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+             aria-valuenow="0" aria-label="Confidence bar">
+          <div id="confidenceBar" class="bar-fill"></div>
+        </div>
+        <!-- Per-class breakdown (small text below bar) -->
+        <div id="allProbs" class="all-probs"></div>
+      </div>
+
+      <!-- Model status (loading / ready / error) -->
+      <p id="modelStatus" class="model-status">⏳ Loading AI model…</p>
+
+    </section>
+  </main>
+
+  <!-- ── Footer ─────────────────────────────────────────────────────────── -->
+  <footer>
+    <p>
+      Indian Currency Note Identifier · Built by Ritesh Yadav ·
+      FoET, University of Lucknow · BUILD WITH ML 2026
+    </p>
+    <p class="footer-note">
+      Runs entirely in your browser — no photo is sent to any server.
+      Works best in good lighting. ₹2000 notes are not supported (withdrawn 2023).
+    </p>
+  </footer>
+
+  <!-- Load our JavaScript logic (must be after the HTML is loaded) -->
+  <script src="script.js"></script>
+</body>
+</html>

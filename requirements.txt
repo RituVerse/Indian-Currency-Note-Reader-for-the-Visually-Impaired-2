@@ -1,0 +1,16 @@
+# requirements.txt
+# Install with:
+#   pip install -r requirements.txt --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org
+#
+# (The --trusted-host flags are needed if your network uses a proxy.)
+#
+# Python version used: 3.14.4
+# TensorFlow version: 2.22.0rc0 (the only build available for Python 3.14 at the time of writing)
+
+tensorflow==2.22.0rc0
+tensorflowjs
+numpy
+Pillow
+matplotlib
+scikit-learn
+scipy
