@@ -1,0 +1,15 @@
+Indian Currency Classifier — Evaluation Summary
+==================================================
+
+Kaggle test set accuracy: 88.2%
+NOTE: Only ~3-4 images per class — results are noisy.
+Per-class (Kaggle):
+  10: 5/5 correct (100.0%)
+  20: 5/5 correct (100.0%)
+  50: 3/5 correct (60.0%)
+  100: 2/4 correct (50.0%)
+  200: 4/4 correct (100.0%)
+  500: 5/5 correct (100.0%)
+  no_note: 6/6 correct (100.0%)
+
+Real-world test set: not available yet.

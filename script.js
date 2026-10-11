@@ -21,7 +21,9 @@
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-// Path to the TF.js model (relative to index.html, so it works on Vercel too)
+// Path to the TF.js model (relative to index.html)
+// The converter produces either a graph model or a layers model depending on
+// which export method succeeded.  We try graph model first, then layers model.
 const MODEL_URL = "./model/model.json";
 
 // Confidence below this → "Not sure" message

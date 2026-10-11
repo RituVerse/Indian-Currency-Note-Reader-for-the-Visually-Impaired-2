@@ -231,9 +231,21 @@ history2 = model.fit(
     callbacks = [checkpoint, early_stop2, reduce_lr],
 )
 
-# ─── Save final model as TF SavedModel format (needed for TF.js export) ──────
-model.save(str(SAVE_DIR / "saved_model"))
-print(f"\nModel saved to {SAVE_DIR}/saved_model")
+# ─── Save final model ────────────────────────────────────────────────────────
+# Keras 3 changed the API:
+#   model.save("folder/")       → no longer creates a SavedModel directory
+#   model.export("folder/")     → creates a TF SavedModel (needed for TF.js)
+#   model.save("file.keras")    → native Keras format (backup)
+
+# Export as TF SavedModel (for tensorflowjs_converter)
+saved_model_path = str(SAVE_DIR / "saved_model")
+model.export(saved_model_path)
+print(f"\nModel exported (SavedModel) → {saved_model_path}")
+
+# Also save as .keras for easy reloading in Python
+keras_bak = str(SAVE_DIR / "final_model.keras")
+model.save(keras_bak)
+print(f"Model saved (.keras)       → {keras_bak}")
 
 # ─── Plot training curves ─────────────────────────────────────────────────────
 # Combine Phase 1 + Phase 2 histories into one long history
