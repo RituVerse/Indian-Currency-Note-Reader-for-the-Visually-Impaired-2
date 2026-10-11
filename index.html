@@ -2,117 +2,158 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <!--
-    viewport meta tag: makes the page look good on phones too.
-    width=device-width  → use the phone's actual screen width
-    initial-scale=1     → don't zoom in or out automatically
-  -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Indian Currency Note Identifier</title>
-
-  <!--
-    TensorFlow.js: the machine-learning library that runs entirely in the
-    browser. No Python server needed — the model runs on the user's own device.
-    We load it from a CDN (Content Delivery Network) so the file is always fresh.
-  -->
+  <title>Currency Identifier — Ritu Yadav</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js"></script>
-
   <link rel="stylesheet" href="style.css" />
 </head>
-
 <body>
-  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+
+  <!-- ── Animated background particles (pure CSS) ─────────────────────────── -->
+  <div class="bg-orbs">
+    <div class="orb orb1"></div>
+    <div class="orb orb2"></div>
+    <div class="orb orb3"></div>
+  </div>
+
+  <!-- ── Header ─────────────────────────────────────────────────────────────── -->
   <header>
-    <h1>💵 Indian Currency Identifier</h1>
-    <p class="subtitle">Point your camera at a banknote to identify it instantly</p>
+    <div class="header-inner">
+      <div class="logo">💵</div>
+      <div>
+        <h1>Indian Currency Identifier</h1>
+        <p class="subtitle">Point your camera at a banknote for instant identification</p>
+      </div>
+    </div>
+    <!-- Model loading pill -->
+    <div id="modelPill" class="model-pill loading">
+      <span class="pill-dot"></span>
+      <span id="pillText">Loading AI model…</span>
+    </div>
   </header>
 
-  <!-- ── Main layout ───────────────────────────────────────────────────── -->
+  <!-- ── Main ───────────────────────────────────────────────────────────────── -->
   <main>
 
-    <!-- Left / top: camera feed + upload controls -->
-    <section class="camera-section" aria-label="Camera input">
+    <!-- LEFT: Input panel -->
+    <section class="panel input-panel" aria-label="Camera and upload input">
 
-      <!-- The live video feed from the webcam -->
-      <div class="video-wrapper">
-        <video id="webcam" autoplay playsinline muted aria-label="Live camera feed"></video>
-        <!--
-          The canvas is hidden — we use it internally to grab a frame from the
-          video and send it to the neural network. The user never sees it directly.
-        -->
+      <!-- Tab switcher -->
+      <div class="tab-bar" role="tablist">
+        <button class="tab active" id="tabCamera" role="tab" aria-selected="true"
+                aria-controls="cameraPane" onclick="switchTab('camera')">
+          📷 Live Camera
+        </button>
+        <button class="tab" id="tabUpload" role="tab" aria-selected="false"
+                aria-controls="uploadPane" onclick="switchTab('upload')">
+          🖼 Upload Photo
+        </button>
+      </div>
+
+      <!-- Camera pane -->
+      <div id="cameraPane" class="tab-pane active">
+        <div class="video-wrapper" id="videoWrapper">
+          <video id="webcam" autoplay playsinline muted
+                 aria-label="Live camera feed"></video>
+          <!-- Scanning overlay — shows when camera is active & predicting -->
+          <div class="scan-overlay" id="scanOverlay" style="display:none">
+            <div class="scan-line"></div>
+            <div class="corner tl"></div>
+            <div class="corner tr"></div>
+            <div class="corner bl"></div>
+            <div class="corner br"></div>
+          </div>
+          <!-- Placeholder shown before camera starts -->
+          <div class="video-placeholder" id="videoPlaceholder">
+            <span class="placeholder-icon">📷</span>
+            <p>Press "Start Camera" below</p>
+          </div>
+        </div>
         <canvas id="snapshot" style="display:none;"></canvas>
+
+        <div class="btn-row">
+          <button id="startBtn" class="btn btn-green" onclick="startCamera()"
+                  aria-label="Start webcam">
+            ▶ Start Camera
+          </button>
+          <button id="stopBtn" class="btn btn-red" onclick="stopCamera()"
+                  disabled aria-label="Stop webcam">
+            ⏹ Stop
+          </button>
+          <!-- Flip camera on mobile -->
+          <button id="flipBtn" class="btn btn-ghost" onclick="flipCamera()"
+                  disabled title="Switch front/back camera">
+            🔄
+          </button>
+        </div>
       </div>
 
-      <!-- Buttons row -->
-      <div class="controls" role="group" aria-label="Camera and upload controls">
-        <button id="startBtn" class="btn btn-primary" aria-label="Start webcam">
-          📷 Start Camera
-        </button>
-        <button id="stopBtn"  class="btn btn-secondary" aria-label="Stop webcam" disabled>
-          ⏹ Stop Camera
-        </button>
-      </div>
-
-      <!-- File upload alternative -->
-      <div class="upload-zone" role="button" tabindex="0"
-           aria-label="Upload a photo of a banknote">
-        <input type="file" id="fileInput" accept="image/*" aria-label="Choose image file" />
-        <label for="fileInput" class="upload-label">
-          📁 Upload a photo instead
-          <span class="upload-hint">(JPG, PNG, or any image)</span>
-        </label>
-      </div>
-
-      <!-- Preview of uploaded image (hidden until a file is chosen) -->
-      <div id="uploadPreview" style="display:none;">
-        <img id="uploadedImg" alt="Uploaded banknote" />
+      <!-- Upload pane -->
+      <div id="uploadPane" class="tab-pane" style="display:none">
+        <div class="drop-zone" id="dropZone"
+             onclick="document.getElementById('fileInput').click()"
+             ondragover="handleDragOver(event)"
+             ondrop="handleDrop(event)"
+             tabindex="0" role="button"
+             onkeydown="if(e.key==='Enter')this.click()"
+             aria-label="Drop or click to upload a note photo">
+          <input type="file" id="fileInput" accept="image/*"
+                 onchange="handleFileSelect(event)" style="display:none" />
+          <div class="drop-content" id="dropContent">
+            <div class="drop-icon">📂</div>
+            <p class="drop-title">Drop a photo here</p>
+            <p class="drop-hint">or click to choose · JPG, PNG, WEBP</p>
+          </div>
+          <img id="uploadedImg" alt="Uploaded note" style="display:none"
+               class="upload-preview" />
+        </div>
+        <button class="btn btn-outline full-width" style="margin-top:0.8rem"
+                onclick="clearUpload()">✕ Clear image</button>
       </div>
     </section>
 
-    <!-- Right / bottom: result panel -->
-    <section class="result-section" aria-live="polite" aria-label="Identification result">
+    <!-- RIGHT: Result panel -->
+    <section class="panel result-panel" aria-live="polite" aria-label="Result">
 
-      <!-- Large result text — the most important element on the page -->
-      <div id="resultBox" class="result-box result-waiting">
-        <p id="resultText" class="result-text">
-          Waiting for camera or photo…
+      <!-- Big result card -->
+      <div id="resultCard" class="result-card state-waiting">
+        <div class="result-icon" id="resultIcon">🔍</div>
+        <p  class="result-label" id="resultLabel">Waiting…</p>
+        <p  class="result-text"  id="resultText">
+          Point your camera at a banknote, or upload a photo.
         </p>
       </div>
 
-      <!-- Confidence bar (shown only when a prediction is ready) -->
-      <div id="confidenceWrapper" class="confidence-wrapper" style="display:none;"
-           aria-label="Confidence level">
-        <div class="confidence-label-row">
-          <span>Confidence:</span>
-          <span id="confidencePct" class="confidence-pct">—</span>
+      <!-- Confidence bar -->
+      <div class="conf-card" id="confCard" style="display:none">
+        <div class="conf-header">
+          <span>Confidence</span>
+          <span id="confPct" class="conf-pct-big">—</span>
         </div>
-        <div class="bar-bg" role="progressbar" aria-valuemin="0" aria-valuemax="100"
-             aria-valuenow="0" aria-label="Confidence bar">
-          <div id="confidenceBar" class="bar-fill"></div>
+        <div class="bar-track" role="progressbar"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div id="confBar" class="bar-fill"></div>
         </div>
-        <!-- Per-class breakdown (small text below bar) -->
-        <div id="allProbs" class="all-probs"></div>
+
+        <!-- Per-class mini bars -->
+        <div id="miniProbs" class="mini-probs"></div>
       </div>
 
-      <!-- Model status (loading / ready / error) -->
-      <p id="modelStatus" class="model-status">⏳ Loading AI model…</p>
+      <!-- History of last 5 results -->
+      <div class="history-card" id="historyCard" style="display:none">
+        <p class="history-title">Recent results</p>
+        <div id="historyList" class="history-list"></div>
+      </div>
 
     </section>
   </main>
 
-  <!-- ── Footer ─────────────────────────────────────────────────────────── -->
+  <!-- ── Footer ─────────────────────────────────────────────────────────────── -->
   <footer>
-    <p>
-      Indian Currency Note Identifier · Built by Ritesh Yadav ·
-      FoET, University of Lucknow · BUILD WITH ML 2026
-    </p>
-    <p class="footer-note">
-      Runs entirely in your browser — no photo is sent to any server.
-      Works best in good lighting. ₹2000 notes are not supported (withdrawn 2023).
-    </p>
+    <p>Indian Currency Identifier &nbsp;·&nbsp; Made by <strong>Ritu Yadav</strong></p>
+    <p class="footer-note">Runs fully in your browser · No photo leaves your device · ₹2000 not supported</p>
   </footer>
 
-  <!-- Load our JavaScript logic (must be after the HTML is loaded) -->
   <script src="script.js"></script>
 </body>
 </html>

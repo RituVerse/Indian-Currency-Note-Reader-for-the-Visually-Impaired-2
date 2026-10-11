@@ -1,148 +1,161 @@
 /**
- * script.js  –  Indian Currency Note Identifier
- * ═══════════════════════════════════════════════
- * This file handles everything the page does:
- *   1. Load the TensorFlow.js model from the model/ folder.
- *   2. Stream the webcam into the <video> element.
- *   3. Every 200ms: grab a frame, run it through the neural network,
- *      and update the result text — BUT only if the prediction changed
- *      or has been stable for 2 seconds (prevents flickering).
- *   4. Also handle uploaded images.
- *
- * There is NO voice / speech output anywhere in this file.
- *
- * Terminology quick-guide:
- *   tensor     = a multi-dimensional array that TF.js uses for numbers
- *   softmax    = the output layer that converts raw scores to probabilities
- *   confidence = the probability (0–1) that the model gives to its top guess
+ * script.js  —  Indian Currency Identifier  (Interactive Redesign)
+ * ═══════════════════════════════════════════════════════════════════
+ * Features:
+ *  · Load TF.js graph model from model/
+ *  · Live webcam with front/back camera flip
+ *  · Drag-and-drop / click image upload
+ *  · Anti-flicker: update display only when stable for ~2 seconds
+ *  · Per-class mini probability bars
+ *  · Last-5-results history strip
+ *  · No voice / speech output anywhere
  */
-
 "use strict";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
+const MODEL_URL          = "./model/model.json";
+const THRESHOLD          = 0.85;   // confidence cutoff
+const PREDICT_MS         = 200;    // how often to run inference (ms)
+const STABLE_FRAMES      = 10;     // frames before updating display (~2s)
+const MAX_HISTORY        = 5;      // how many recent results to show
 
-// Path to the TF.js model (relative to index.html)
-// The converter produces either a graph model or a layers model depending on
-// which export method succeeded.  We try graph model first, then layers model.
-const MODEL_URL = "./model/model.json";
+// Denomination display labels
+const LABELS = {
+  "10": "₹10", "20": "₹20", "50": "₹50",
+  "100": "₹100", "200": "₹200", "500": "₹500",
+  "no_note": "No note"
+};
+// Icons per class
+const ICONS = {
+  "10":"💵","20":"💵","50":"💵","100":"💵","200":"💵","500":"💵",
+  "no_note":"🔲"
+};
 
-// Confidence below this → "Not sure" message
-const THRESHOLD = 0.85;
+// ── State ─────────────────────────────────────────────────────────────────────
+let model      = null;
+let classNames = [];
+let stream     = null;
+let facingMode = "environment";   // back camera default
+let predTimer  = null;
+let stableCount = 0;
+let lastClass   = null;
+let displayedClass = null;
+let history    = [];   // [{label, conf, icon}]
 
-// How often (milliseconds) to grab a frame from the webcam and predict
-const PREDICT_INTERVAL_MS = 200;
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const webcamEl       = document.getElementById("webcam");
+const snapshotCanvas = document.getElementById("snapshot");
+const modelPill      = document.getElementById("modelPill");
+const pillText       = document.getElementById("pillText");
+const scanOverlay    = document.getElementById("scanOverlay");
+const videoPlaceholder = document.getElementById("videoPlaceholder");
+const resultCard     = document.getElementById("resultCard");
+const resultIcon     = document.getElementById("resultIcon");
+const resultLabel    = document.getElementById("resultLabel");
+const resultText     = document.getElementById("resultText");
+const confCard       = document.getElementById("confCard");
+const confBar        = document.getElementById("confBar");
+const confPct        = document.getElementById("confPct");
+const miniProbs      = document.getElementById("miniProbs");
+const historyCard    = document.getElementById("historyCard");
+const historyList    = document.getElementById("historyList");
+const startBtn       = document.getElementById("startBtn");
+const stopBtn        = document.getElementById("stopBtn");
+const flipBtn        = document.getElementById("flipBtn");
+const dropZone       = document.getElementById("dropZone");
+const dropContent    = document.getElementById("dropContent");
+const uploadedImg    = document.getElementById("uploadedImg");
 
-// Stable-result logic: if the SAME class is predicted for this many
-// consecutive frames, we update the display.  200ms × 10 = 2 seconds.
-const STABLE_FRAMES = 10;
+// ── 1. Boot ───────────────────────────────────────────────────────────────────
+loadModel();
 
-// ── DOM element references ────────────────────────────────────────────────────
-const webcamEl        = document.getElementById("webcam");
-const snapshotCanvas  = document.getElementById("snapshot");
-const startBtn        = document.getElementById("startBtn");
-const stopBtn         = document.getElementById("stopBtn");
-const fileInput       = document.getElementById("fileInput");
-const uploadPreview   = document.getElementById("uploadPreview");
-const uploadedImg     = document.getElementById("uploadedImg");
-const resultBox       = document.getElementById("resultBox");
-const resultText      = document.getElementById("resultText");
-const confidenceWrap  = document.getElementById("confidenceWrapper");
-const confidenceBar   = document.getElementById("confidenceBar");
-const confidencePct   = document.getElementById("confidencePct");
-const allProbsEl      = document.getElementById("allProbs");
-const modelStatusEl   = document.getElementById("modelStatus");
-
-// ── App state ─────────────────────────────────────────────────────────────────
-let model      = null;    // the loaded TF.js model
-let classNames = [];      // ["10", "20", "50", "100", "200", "500", "no_note"]
-let stream     = null;    // the webcam MediaStream
-let predTimer  = null;    // setInterval handle for the prediction loop
-let stableCount = 0;      // how many consecutive frames gave the same class
-let lastClass   = null;   // the class predicted in the previous frame
-let displayedClass = null;  // what is currently shown on screen
-
-// ── 1. Load model on page start ──────────────────────────────────────────────
-
+// ── 2. Model loading ──────────────────────────────────────────────────────────
 async function loadModel() {
-  setStatus("⏳ Loading AI model…");
+  setPill("loading", "Loading AI model…");
   try {
-    // Fetch class names (the order must match the model's output layer)
     const resp = await fetch("./model/class_names.json");
-    if (!resp.ok) throw new Error("Could not load class_names.json");
+    if (!resp.ok) throw new Error("class_names.json not found");
     classNames = await resp.json();
 
-    // Load the TF.js model. tf.loadGraphModel reads model.json + weight files.
     model = await tf.loadGraphModel(MODEL_URL);
-    setStatus(`✅ Model ready (${classNames.length} classes)`);
+    setPill("ready", `Model ready · ${classNames.length} classes`);
+    buildMiniProbRows();   // create the mini bar DOM once
     console.log("Model loaded. Classes:", classNames);
   } catch (err) {
-    setStatus(`❌ Error loading model: ${err.message}`);
+    setPill("error", "Model failed to load");
     console.error(err);
   }
 }
 
-// ── 2. Webcam handling ────────────────────────────────────────────────────────
+function setPill(state, text) {
+  modelPill.className = "model-pill " + state;
+  pillText.textContent = text;
+}
 
-startBtn.addEventListener("click", async () => {
-  if (!model) { alert("Model not loaded yet. Please wait."); return; }
+// ── 3. Tab switching ──────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.getElementById("cameraPane").style.display = tab === "camera" ? "" : "none";
+  document.getElementById("uploadPane").style.display = tab === "upload" ? "" : "none";
+  document.getElementById("tabCamera").classList.toggle("active", tab === "camera");
+  document.getElementById("tabUpload").classList.toggle("active", tab === "upload");
 
+  if (tab === "upload" && stream) stopCamera();
+}
+
+// ── 4. Camera ─────────────────────────────────────────────────────────────────
+async function startCamera() {
+  if (!model) { alert("Model not loaded yet. Please wait a moment."); return; }
   try {
-    // Ask the browser for camera access.
-    // facingMode: "environment" = back camera on phones (better for notes)
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: "environment" }, width: 640, height: 480 },
-      audio: false,
+      video: { facingMode: { ideal: facingMode }, width: 640, height: 480 },
+      audio: false
     });
     webcamEl.srcObject = stream;
     await webcamEl.play();
 
+    videoPlaceholder.style.display = "none";
+    scanOverlay.style.display      = "";
     startBtn.disabled = true;
     stopBtn.disabled  = false;
+    flipBtn.disabled  = false;
 
-    // Start the prediction loop
-    predTimer = setInterval(predictFromWebcam, PREDICT_INTERVAL_MS);
-    showResult("waiting", "📷 Camera active. Point at a banknote…", null);
+    predTimer = setInterval(predictFromWebcam, PREDICT_MS);
+    setResult("waiting", "📷", "LIVE", "Scanning for a banknote…");
   } catch (err) {
-    alert("Could not access camera:\n" + err.message +
-          "\n\nTip: make sure you are using http://localhost and have given camera permission.");
-    console.error(err);
+    alert("Camera error: " + err.message +
+          "\n\nMake sure you opened this via http://localhost (not file://) and granted camera permission.");
   }
-});
+}
 
-stopBtn.addEventListener("click", () => {
-  clearInterval(predTimer);
-  predTimer = null;
-  if (stream) {
-    stream.getTracks().forEach(t => t.stop());
-    stream = null;
-  }
+function stopCamera() {
+  clearInterval(predTimer); predTimer = null;
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
   webcamEl.srcObject = null;
+  videoPlaceholder.style.display = "";
+  scanOverlay.style.display      = "none";
   startBtn.disabled = false;
   stopBtn.disabled  = true;
-  stableCount  = 0;
-  lastClass    = null;
-  displayedClass = null;
-  showResult("waiting", "Waiting for camera or photo…", null);
-  confidenceWrap.style.display = "none";
-});
+  flipBtn.disabled  = true;
+  resetState();
+}
 
-// ── 3. Webcam prediction loop ────────────────────────────────────────────────
+async function flipCamera() {
+  facingMode = (facingMode === "environment") ? "user" : "environment";
+  stopCamera();
+  await startCamera();
+}
 
+// ── 5. Webcam predict loop ────────────────────────────────────────────────────
 async function predictFromWebcam() {
-  if (!webcamEl.videoWidth) return;  // video not ready yet
-
-  // Draw the current video frame onto the hidden canvas
+  if (!webcamEl.videoWidth) return;
   const ctx = snapshotCanvas.getContext("2d");
   snapshotCanvas.width  = webcamEl.videoWidth;
   snapshotCanvas.height = webcamEl.videoHeight;
   ctx.drawImage(webcamEl, 0, 0);
 
-  // Run the neural network on this canvas frame
   const { topClass, topConf, probs } = await runModel(snapshotCanvas);
 
-  // ── Stable-result anti-flicker logic ────────────────────────────────────
-  // We don't update the display on EVERY frame — only when the model has
-  // been consistently predicting the SAME class for ~2 seconds.
+  // Anti-flicker: only update after STABLE_FRAMES consecutive same prediction
   if (topClass === lastClass) {
     stableCount++;
   } else {
@@ -150,165 +163,159 @@ async function predictFromWebcam() {
     lastClass   = topClass;
   }
 
-  // Update display only when stable AND (class changed OR forced update)
   if (stableCount >= STABLE_FRAMES && topClass !== displayedClass) {
     displayedClass = topClass;
-    updateDisplay(topClass, topConf, probs);
+    updateDisplay(topClass, topConf, probs, true);
   } else if (stableCount >= STABLE_FRAMES) {
-    // Same class, just update the confidence bar (no text flicker)
-    updateConfidenceBar(topConf, probs);
+    updateConfBar(topConf, probs);
   }
 }
 
-// ── 4. Image upload handling ──────────────────────────────────────────────────
-
-fileInput.addEventListener("change", async (e) => {
+// ── 6. Upload ─────────────────────────────────────────────────────────────────
+function handleFileSelect(e) {
   const file = e.target.files[0];
-  if (!file) return;
+  if (file) processFile(file);
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  dropZone.classList.add("drag-over");
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  dropZone.classList.remove("drag-over");
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith("image/")) processFile(file);
+}
+
+function processFile(file) {
   if (!model) { alert("Model not loaded yet."); return; }
+  const url = URL.createObjectURL(file);
+  uploadedImg.src = url;
+  uploadedImg.style.display = "";
+  dropContent.style.display = "none";
+  setResult("waiting", "🔍", "ANALYSING", "Processing image…");
 
-  // Stop webcam if it was running
-  if (stream) stopBtn.click();
-
-  // Show the uploaded image as a preview
-  const objectUrl = URL.createObjectURL(file);
-  uploadedImg.src = objectUrl;
-  uploadPreview.style.display = "block";
-
-  // Wait for the image to finish loading, then run the model
   uploadedImg.onload = async () => {
-    showResult("waiting", "🔍 Analysing…", null);
     const { topClass, topConf, probs } = await runModel(uploadedImg);
-    updateDisplay(topClass, topConf, probs);
-    URL.revokeObjectURL(objectUrl);  // free memory
+    updateDisplay(topClass, topConf, probs, false);
+    URL.revokeObjectURL(url);
   };
-});
+}
 
-// Also allow clicking the upload-zone div (for keyboard users)
-document.querySelector(".upload-zone").addEventListener("keydown", (e) => {
-  if (e.key === "Enter" || e.key === " ") fileInput.click();
-});
+function clearUpload() {
+  uploadedImg.style.display    = "none";
+  dropContent.style.display    = "";
+  uploadedImg.src              = "";
+  document.getElementById("fileInput").value = "";
+  resetState();
+}
 
-// ── 5. Core inference function ────────────────────────────────────────────────
-
-/**
- * runModel(imageSource)
- * Takes an HTMLImageElement, HTMLCanvasElement, or HTMLVideoElement,
- * preprocesses it, runs the TF.js model, and returns the top prediction.
- *
- * @returns {topClass: string, topConf: number, probs: number[]}
- */
-async function runModel(imageSource) {
-  // tf.tidy() automatically cleans up intermediate tensors (frees memory).
-  // This is important in a prediction loop — without it, memory would grow.
+// ── 7. Core inference ─────────────────────────────────────────────────────────
+async function runModel(source) {
   return tf.tidy(() => {
-    // Step A: Convert the image to a tensor (a 3D array: height × width × 3 channels)
-    let tensor = tf.browser.fromPixels(imageSource);
-
-    // Step B: Resize to 224×224 (MobileNetV2's expected input size)
-    tensor = tf.image.resizeBilinear(tensor, [224, 224]);
-
-    // Step C: MobileNetV2 was trained with pixel values in [-1, 1], not [0, 255].
-    // Formula: (pixel / 127.5) - 1
-    tensor = tensor.toFloat().div(127.5).sub(1.0);
-
-    // Step D: Add a batch dimension → shape becomes [1, 224, 224, 3]
-    tensor = tensor.expandDims(0);
-
-    // Step E: Run the model! It returns an array of probabilities (softmax output).
-    const predictions = model.predict(tensor);
-
-    // Step F: Convert tensor to a plain JavaScript array
-    const probs = Array.from(predictions.dataSync());
-
-    // Step G: Find the class with the highest probability
+    let t = tf.browser.fromPixels(source);
+    t = tf.image.resizeBilinear(t, [224, 224]);
+    t = t.toFloat().div(127.5).sub(1.0);   // MobileNetV2 preprocessing: [0,255]→[-1,1]
+    t = t.expandDims(0);
+    const out   = model.predict(t);
+    const probs = Array.from(out.dataSync());
     const topIdx  = probs.indexOf(Math.max(...probs));
-    const topConf = probs[topIdx];
-    const topClass = classNames[topIdx];
-
-    return { topClass, topConf, probs };
+    return { topClass: classNames[topIdx], topConf: probs[topIdx], probs };
   });
 }
 
-// ── 6. Display update functions ────────────────────────────────────────────────
-
-/**
- * updateDisplay: called when we have a stable new prediction.
- * Updates the big result text AND the confidence bar.
- */
-function updateDisplay(cls, conf, probs) {
-  confidenceWrap.style.display = "block";
+// ── 8. Display ────────────────────────────────────────────────────────────────
+function updateDisplay(cls, conf, probs, addToHistory) {
+  confCard.style.display = "";
+  updateConfBar(conf, probs);
 
   if (cls === "no_note") {
-    showResult("nonote", "🔲 No note detected", conf);
+    setResult("nonote", "🔲", "NO NOTE", "No banknote detected");
   } else if (conf < THRESHOLD) {
-    // Below the 85% confidence threshold → don't commit to an answer
-    showResult("unsure",
-      `Not sure. Please show the note again.\n(Best guess: ₹${cls})`,
-      conf
-    );
+    setResult("unsure", "🤔", "NOT SURE",
+      `Best guess: ${LABELS[cls] || cls}\nTry again with better lighting.`);
   } else {
-    // Confident prediction — the main use case
-    showResult("detected",
-      `This is a\n<span class="denom-highlight">₹${formatDenom(cls)} note</span>`,
-      conf
-    );
+    setResult("detected", ICONS[cls] || "💵", "IDENTIFIED",
+      `This is a\n<span class="denom-big">${LABELS[cls] || cls} note</span>`);
   }
 
-  updateConfidenceBar(conf, probs);
+  if (addToHistory && cls !== "no_note" && conf >= THRESHOLD) {
+    addHistory(cls, conf);
+  }
 }
 
-/**
- * showResult: change the result box's appearance and text.
- * state = "waiting" | "detected" | "unsure" | "nonote"
- */
-function showResult(state, html, conf) {
-  // Remove all state classes then add the new one
-  resultBox.className = "result-box result-" + state;
-
-  // Set the inner HTML (we use innerHTML to allow the <span> inside)
-  resultText.innerHTML = html.replace(/\n/g, "<br>");
+function setResult(state, icon, label, html) {
+  resultCard.className = "result-card state-" + state;
+  resultIcon.textContent  = icon;
+  resultLabel.textContent = label;
+  resultText.innerHTML    = html.replace(/\n/g, "<br>");
 }
 
-/**
- * updateConfidenceBar: update just the bar and percentages without
- * touching the big result text.
- */
-function updateConfidenceBar(conf, probs) {
+function updateConfBar(conf, probs) {
   const pct = Math.round(conf * 100);
-  confidencePct.textContent = pct + "%";
-
-  // Move the bar fill
-  confidenceBar.style.width = pct + "%";
-
-  // Colour: green ≥ 85%, amber ≥ 50%, red < 50%
-  confidenceBar.className = "bar-fill " +
-    (pct >= 85 ? "high" : pct >= 50 ? "medium" : "low");
-
-  // Update the aria value for screen readers
-  confidenceBar.parentElement.setAttribute("aria-valuenow", pct);
-
-  // Show a small breakdown of all class probabilities
-  allProbsEl.innerHTML = classNames
-    .map((cls, i) => {
-      const p = Math.round(probs[i] * 100);
-      const label = cls === "no_note" ? "no_note" : `₹${formatDenom(cls)}`;
-      return `<span>${label}: ${p}%</span>`;
-    })
-    .join("  ·  ");
+  confPct.textContent = pct + "%";
+  confBar.style.width = pct + "%";
+  confBar.className   = "bar-fill " + (pct >= 85 ? "high" : pct >= 50 ? "medium" : "low");
+  confBar.parentElement.setAttribute("aria-valuenow", pct);
+  updateMiniProbs(probs);
 }
 
-/** Format denomination: "100" → "100", "2000" → "2,000" etc. */
-function formatDenom(cls) {
-  const n = parseInt(cls, 10);
-  if (isNaN(n)) return cls;
-  return n >= 1000 ? n.toLocaleString("en-IN") : String(n);
+// ── 9. Mini probability bars ──────────────────────────────────────────────────
+function buildMiniProbRows() {
+  miniProbs.innerHTML = "";
+  classNames.forEach(cls => {
+    const label = LABELS[cls] || cls;
+    // Colour cycles through accent colours per class
+    const colour = cls === "no_note" ? "#6366f1" : "#f5a623";
+    miniProbs.insertAdjacentHTML("beforeend", `
+      <div class="mini-row" id="mini-${cls}">
+        <span class="mini-label">${label}</span>
+        <div class="mini-track">
+          <div class="mini-bar" id="mbar-${cls}"
+               style="width:0%;background:${colour}"></div>
+        </div>
+        <span class="mini-pct" id="mpct-${cls}">0%</span>
+      </div>`);
+  });
 }
 
-/** Update the small status line at the bottom of the result section. */
-function setStatus(msg) {
-  modelStatusEl.textContent = msg;
+function updateMiniProbs(probs) {
+  const topIdx = probs.indexOf(Math.max(...probs));
+  classNames.forEach((cls, i) => {
+    const pct = Math.round(probs[i] * 100);
+    const bar = document.getElementById("mbar-" + cls);
+    const pctEl = document.getElementById("mpct-" + cls);
+    const row   = document.getElementById("mini-" + cls);
+    if (!bar) return;
+    bar.style.width     = pct + "%";
+    pctEl.textContent   = pct + "%";
+    row.className       = "mini-row" + (i === topIdx ? " top" : "");
+  });
 }
 
-// ── 7. Boot the app ────────────────────────────────────────────────────────────
-loadModel();
+// ── 10. Result history ────────────────────────────────────────────────────────
+function addHistory(cls, conf) {
+  history.unshift({ label: LABELS[cls] || cls, conf: Math.round(conf * 100), icon: ICONS[cls] || "💵" });
+  if (history.length > MAX_HISTORY) history.pop();
+  renderHistory();
+}
+
+function renderHistory() {
+  if (history.length === 0) { historyCard.style.display = "none"; return; }
+  historyCard.style.display = "";
+  historyList.innerHTML = history.map(h =>
+    `<div class="history-item">
+       <span class="hi-label">${h.icon} ${h.label}</span>
+       <span class="hi-conf">${h.conf}% confident</span>
+     </div>`
+  ).join("");
+}
+
+// ── 11. Helpers ───────────────────────────────────────────────────────────────
+function resetState() {
+  stableCount = 0; lastClass = null; displayedClass = null;
+  setResult("waiting", "🔍", "WAITING", "Point your camera at a banknote, or upload a photo.");
+  confCard.style.display = "none";
+}
